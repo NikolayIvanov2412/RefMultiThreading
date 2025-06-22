@@ -1,96 +1,100 @@
 package org.example;
 
-import java.io.*;
+import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-// Класс Server, содержащий основные методы сервера
 public class Server {
     private final int port;
     private final List<String> validPaths;
     private final ExecutorService threadPool;
+    private final Map<String, Map<String, Handler>> handlers;
 
     public Server(int port, List<String> validPaths) {
         this.port = port;
         this.validPaths = validPaths;
-        this.threadPool = Executors.newFixedThreadPool(64); // создаем пул из 64 потоков
+        this.threadPool = Executors.newFixedThreadPool(64); // Пул из 64 потоков
+        this.handlers = new HashMap<>();
     }
 
-    // Метод для запуска сервера
+    public void addHandler(String method, String path, Handler handler) {
+        handlers.computeIfAbsent(method, m -> new HashMap<>()).put(path, handler);
+    }
+
     public void start() {
         try (ServerSocket serverSocket = new ServerSocket(port)) {
-            System.out.println("Сервер запущен на порте " + port);
+            System.out.println("Сервер запущен на порту " + port);
             while (true) {
                 Socket clientSocket = serverSocket.accept();
-                threadPool.execute(() -> handleClient(clientSocket, validPaths)); // запускаем новую сессию в отдельном потоке
+                threadPool.submit(() -> handleClient(clientSocket));
             }
         } catch (IOException e) {
-            System.err.println("Ошибка запуска сервера: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
-    // Метод для обработки отдельной сессии
-    private void handleClient(Socket clientSocket, List<String> validPaths) {
+    private void handleClient(Socket clientSocket) {
         try (
-                BufferedReader reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-                BufferedOutputStream writer = new BufferedOutputStream(clientSocket.getOutputStream())
+                BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+                BufferedOutputStream out = new BufferedOutputStream(clientSocket.getOutputStream())
         ) {
-            String requestLine = reader.readLine();
-            String[] parts = requestLine.split(" ");
+            // Читаем строку запроса
+            final var requestLine = in.readLine();
+            final var parts = requestLine.split(" ");
 
-            if (parts.length != 3 || !parts[0].equals("GET")) {
-                sendError(writer, "400 Bad Request");
+            if (parts.length != 3) {
+                writeResponse(out, 400, "Bad Request");
                 return;
             }
 
-            String requestedPath = parts[1];
-            if (!validPaths.contains(requestedPath)) {
-                sendError(writer, "404 Not Found");
+            final var method = parts[0]; // Метод запроса (GET, POST и т.д.)
+            final var path = parts[1];   // Путь запрашиваемого ресурса
+
+            if (!validPaths.contains(path)) {
+                writeResponse(out, 404, "Not Found");
                 return;
             }
 
-            Path filePath = Path.of(".", "public", requestedPath);
-            String mimeType = Files.probeContentType(filePath);
+            // Формируем объект Request
+            Request request = parseRequest(in, method, path);
 
-            if (requestedPath.equals("/classic.html")) {
-                String template = Files.readString(filePath);
-                String replacedTemplate = template.replace("{time}", LocalDateTime.now().toString());
-                sendResponse(writer, "200 OK", mimeType, replacedTemplate.getBytes());
+            // Получаем обработчик для текущего запроса
+            Handler handler = getHandler(method, path);
+            if (handler != null) {
+                handler.handle(request, out);
             } else {
-                byte[] content = Files.readAllBytes(filePath);
-                sendResponse(writer, "200 OK", mimeType, content);
+                writeResponse(out, 404, "Not Found");
             }
-        } catch (IOException e) {
-            System.err.println("Ошибка обработки запроса: " + e.getMessage());
-        } finally {
-            try {
-                clientSocket.close();
-            } catch (IOException e) {
-                System.err.println("Ошибка закрытия сокета: " + e.getMessage());
-            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
-    // Метод для формирования и отправки стандартного HTTP-ответа
-    private void sendResponse(BufferedOutputStream writer, String statusCode, String contentType, byte[] content) throws IOException {
-        writer.write(("HTTP/1.1 " + statusCode + "\r\n" +
-                "Content-Type: " + contentType + "\r\n" +
-                "Content-Length: " + content.length + "\r\n" +
-                "Connection: close\r\n" +
-                "\r\n").getBytes());
-        writer.write(content);
-        writer.flush();
+    private Request parseRequest(BufferedReader in, String method, String path) throws IOException {
+        // Заглушка для упрощённого примера
+        return new Request(method, path, Map.of(), new byte[0]);
     }
 
-    // Вспомогательный метод для отправки сообщений об ошибке
-    private void sendError(BufferedOutputStream writer, String errorCode) throws IOException {
-        sendResponse(writer, errorCode, "", "".getBytes());
+    private Handler getHandler(String method, String path) {
+        Map<String, Handler> methodHandlers = handlers.get(method);
+        return methodHandlers != null ? methodHandlers.get(path) : null;
+    }
+
+    private void writeResponse(BufferedOutputStream out, int statusCode, String reasonPhrase) throws IOException {
+        out.write((
+                "HTTP/1.1 " + statusCode + " " + reasonPhrase + "\r\n" +
+                        "Content-Length: 0\r\n" +
+                        "Connection: close\r\n" +
+                        "\r\n"
+        ).getBytes());
+        out.flush();
     }
 }
-

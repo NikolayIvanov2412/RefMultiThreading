@@ -1,24 +1,33 @@
 package org.example;
 
+import java.io.BufferedOutputStream;
 import java.util.List;
 
 public class Main {
     public static void main(String[] args) {
-        final var validPaths = List.of(
-                "/index.html",
-                "/spring.svg",
-                "/spring.png",
-                "/resources.html",
-                "/styles.css",
-                "/app.js",
-                "/links.html",
-                "/forms.html",
-                "/classic.html",
-                "/events.html",
-                "/events.js"
-        );
+        final var validPaths = List.of("/", "/hello");
+        final var server = new Server(9999, validPaths);
 
-        Server server = new Server(9999, validPaths);
+        // Регистрируем обработчик для GET-запроса на путь '/hello'
+        server.addHandler("GET", "/hello", new Handler() {
+            @Override
+            public void handle(Request request, BufferedOutputStream outputStream) throws Exception {
+                String responseText = "Привет мир!";
+                byte[] content = responseText.getBytes("UTF-8"); // Преобразование строки в UTF-8
+
+                outputStream.write("HTTP/1.1 200 OK\r\n".getBytes());
+                outputStream.write("Content-Type: text/plain; charset=UTF-8\r\n".getBytes()); // Сообщаем браузеру кодировку
+                outputStream.write("Content-Length: ".getBytes());
+                outputStream.write(Integer.toString(content.length).getBytes());
+                outputStream.write("\r\n".getBytes());
+                outputStream.write("Connection: close\r\n".getBytes());
+                outputStream.write("\r\n".getBytes());
+                outputStream.write(content); // Отсылаем преобразованные данные
+                outputStream.flush();
+            }
+        });
+
+        // Начинаем слушание соединений
         server.start();
     }
 }
