@@ -12,17 +12,18 @@ public class Main {
         server.addHandler("GET", "/hello", new Handler() {
             @Override
             public void handle(Request request, BufferedOutputStream outputStream) throws Exception {
-                String responseText = "Привет мир!";
-                byte[] content = responseText.getBytes("UTF-8"); // Преобразование строки в UTF-8
+                String lastParam = request.getQueryParam("last");
+                String responseText = "Параметр last равен: " + lastParam;
+                byte[] content = responseText.getBytes("UTF-8");
 
                 outputStream.write("HTTP/1.1 200 OK\r\n".getBytes());
-                outputStream.write("Content-Type: text/plain; charset=UTF-8\r\n".getBytes()); // Сообщаем браузеру кодировку
+                outputStream.write("Content-Type: text/plain; charset=UTF-8\r\n".getBytes());
                 outputStream.write("Content-Length: ".getBytes());
                 outputStream.write(Integer.toString(content.length).getBytes());
                 outputStream.write("\r\n".getBytes());
                 outputStream.write("Connection: close\r\n".getBytes());
                 outputStream.write("\r\n".getBytes());
-                outputStream.write(content); // Отсылаем преобразованные данные
+                outputStream.write(content);
                 outputStream.flush();
             }
         });

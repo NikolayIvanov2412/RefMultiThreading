@@ -56,18 +56,18 @@ public class Server {
             }
 
             final var method = parts[0]; // Метод запроса (GET, POST и т.д.)
-            final var path = parts[1];   // Путь запрашиваемого ресурса
+            final var rawPath = parts[1]; // Путь запрашиваемого ресурса (включая параметры)
 
-            if (!validPaths.contains(path)) {
+            if (!validPaths.contains(rawPath.split("\\?")[0])) {
                 writeResponse(out, 404, "Not Found");
                 return;
             }
 
             // Формируем объект Request
-            Request request = parseRequest(in, method, path);
+            Request request = parseRequest(in, method, rawPath);
 
             // Получаем обработчик для текущего запроса
-            Handler handler = getHandler(method, path);
+            Handler handler = getHandler(method, request.getPath());
             if (handler != null) {
                 handler.handle(request, out);
             } else {
@@ -78,9 +78,9 @@ public class Server {
         }
     }
 
-    private Request parseRequest(BufferedReader in, String method, String path) throws IOException {
-        // Заглушка для упрощённого примера
-        return new Request(method, path, Map.of(), new byte[0]);
+    private Request parseRequest(BufferedReader in, String method, String rawPath) throws IOException {
+        // Создаем Request с учетом отделения пути и параметров
+        return new Request(method, rawPath, Map.of(), new byte[0]);
     }
 
     private Handler getHandler(String method, String path) {
